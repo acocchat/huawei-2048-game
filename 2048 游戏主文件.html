@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>2048 小游戏</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: #faf8ef; color: #776e65; margin: 0; padding: 24px 16px 48px; text-align: center; }
+  h1 { font-size: 48px; margin: 0 0 8px; }
+  p { margin: 6px 0; }
+  .scores { display: flex; gap: 12px; justify-content: center; margin: 12px 0; }
+  .score-box { background: #bbada0; color: #fff; border-radius: 6px; padding: 8px 18px; min-width: 110px; }
+  .score-box b { display: block; font-size: 20px; }
+  #board { position: relative; width: min(92vw, 440px); height: min(92vw, 440px); margin: 16px auto; background: #bbada0; border-radius: 8px; padding: 10px; display: grid; grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(4, 1fr); gap: 10px; }
+  .cell { background: rgba(238, 228, 218, 0.35); border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: clamp(24px, 7vw, 40px); font-weight: 700; }
+  .tile-2 { background: #eee4da; } .tile-4 { background: #ede0c8; }
+  .tile-8 { background: #f2b179; color: #f9f6f2; } .tile-16 { background: #f59563; color: #f9f6f2; }
+  .tile-32 { background: #f67c5f; color: #f9f6f2; } .tile-64 { background: #f65e3b; color: #f9f6f2; }
+  .tile-128, .tile-256, .tile-512, .tile-1024, .tile-2048 { background: #edcf72; color: #f9f6f2; font-size: clamp(20px, 6vw, 32px); }
+  button { background: #8f7a66; color: #fff; border: 0; border-radius: 6px; padding: 10px 20px; font-size: 16px; cursor: pointer; }
+  button:hover { background: #7c6a58; }
+  #message { font-weight: 700; min-height: 24px; margin-top: 10px; }
+  .hint { color: #9a8f82; font-size: 14px; }
+</style>
+</head>
+<body>
+  <h1>2048</h1>
+  <p>用方向键或在棋盘上滑动，合并相同数字，拼出 2048！</p>
+  <div class="scores">
+    <div class="score-box">分数<b id="score">0</b></div>
+    <div class="score-box">最高分<b id="best">0</b></div>
+  </div>
+  <button id="newGame" type="button">新游戏</button>
+  <div id="board" aria-label="2048 棋盘"></div>
+  <p id="message"></p>
+  <p class="hint">支持键盘方向键 / WASD，以及触屏滑动。单文件、零依赖，直接用浏览器打开 index.html 即可游玩。</p>
+  <script>
+    const SIZE = 4;
+    let grid = [], score = 0, best = Number(localStorage.getItem('game2048-best') || 0), over = false, won = false;
+    const boardEl = document.getElementById('board');
+    const scoreEl = document.getElementById('score');
+    const bestEl = document.getElementById('best');
+    const messageEl = document.getElementById('message');
+
+    function emptyGrid() { return Array.from({ length: SIZE }, () => Array(SIZE).fill(0)); }
+    function randomEmptyCell() {
+      const cells = [];
+      for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) if (!grid[r][c]) cells.push([r, c]);
+      return cells.length ? cells[Math.floor(Math.random() * cells.length)] : null;
+    }
+    function spawn() {
+      const cell = randomEmptyCell();
+      if (cell) grid[cell[0]][cell[1]] = Math.random() < 0.9 ? 2 : 4;
+    }
+    function slide(row) {
+      const values = row.filter(Boolean);
+      const merged = [];
+      for (let i = 0; i < values.length; i++) {
+        if (values[i] === values[i + 1]) { const v = values[i] * 2; merged.push(v); score += v; if (v === 2048) won = true; i++; }
+        else merged.push(values[i]);
+      }
+      while (merged.length < SIZE) merged.push(0);
+      return merged;
+    }
+    function move(dir) {
+      if (over) return;
+      const before = JSON.stringify(grid);
+      if (dir === 'left') grid = grid.map(slide);
+      if (dir === 'right') grid = grid.map(row => slide(row.slice().reverse()).reverse());
+      if (dir === 'up') {
+        for (let c = 0; c < SIZE; c++) {
+          const col = slide(grid.map(row => row[c]));
+          for (let r = 0; r < SIZE; r++) grid[r][c] = col[r];
+        }
+      }
+      if (dir === 'down') {
+        for (let c = 0; c < SIZE; c++) {
+          const col = slide(grid.map(row => row[c]).reverse()).reverse();
+          for (let r = 0; r < SIZE; r++) grid[r][c] = col[r];
+        }
+      }
+      if (JSON.stringify(grid) !== before) { spawn(); render(); checkEnd(); }
+    }
+    function canMove() {
+      if (randomEmptyCell()) return true;
+      for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
+        if (c + 1 < SIZE && grid[r][c] === grid[r][c + 1]) return true;
+        if (r + 1 < SIZE && grid[r][c] === grid[r + 1][c]) return true;
+      }
+      return false;
+    }
+    function checkEnd() {
+      if (won) messageEl.textContent = '恭喜！你拼出了 2048，可以继续挑战更高分。';
+      if (!canMove()) { over = true; messageEl.textContent = '游戏结束，没有可移动的空格了。点“新游戏”再来一局。'; }
+    }
+    function render() {
+      boardEl.innerHTML = '';
+      grid.flat().forEach(value => {
+        const cell = document.createElement('div');
+        cell.className = 'cell' + (value ? ' tile-' + value : '');
+        cell.textContent = value || '';
+        boardEl.appendChild(cell);
+      });
+      scoreEl.textContent = score;
+      if (score > best) { best = score; localStorage.setItem('game2048-best', String(best)); }
+      bestEl.textContent = best;
+    }
+    function newGame() {
+      grid = emptyGrid(); score = 0; over = false; won = false; messageEl.textContent = '';
+      spawn(); spawn(); render();
+    }
+    document.getElementById('newGame').addEventListener('click', newGame);
+    document.addEventListener('keydown', e => {
+      const map = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down', a: 'left', d: 'right', w: 'up', s: 'down', A: 'left', D: 'right', W: 'up', S: 'down' };
+      if (map[e.key]) { e.preventDefault(); move(map[e.key]); }
+    });
+    let touchX = null, touchY = null;
+    boardEl.addEventListener('touchstart', e => { const t = e.changedTouches[0]; touchX = t.clientX; touchY = t.clientY; }, { passive: true });
+    boardEl.addEventListener('touchend', e => {
+      if (touchX === null) return;
+      const t = e.changedTouches[0], dx = t.clientX - touchX, dy = t.clientY - touchY;
+      if (Math.max(Math.abs(dx), Math.abs(dy)) > 24) move(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up'));
+      touchX = touchY = null;
+    }, { passive: true });
+    newGame();
+  </script>
+</body>
+</html>
